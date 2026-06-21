@@ -10,13 +10,15 @@ import (
 )
 
 type Task struct {
-	Name     string
-	Interval time.Duration
-	Execute  func(context.Context) error
-	Access   sync.RWMutex
-	Running  bool
-	ReloadCh chan struct{}
-	Stop     chan struct{}
+	Name            string
+	Interval        time.Duration
+	Execute         func(context.Context) error
+	Access          sync.RWMutex
+	ExecuteLock     sync.Mutex
+	Running         bool
+	ReloadCh        chan struct{}
+	ReloadOnTimeout bool
+	Stop            chan struct{}
 }
 
 func (t *Task) Start(first bool) error {
@@ -29,16 +31,15 @@ func (t *Task) Start(first bool) error {
 	t.Stop = make(chan struct{})
 	t.Access.Unlock()
 	go func() {
-		timer := time.NewTimer(t.Interval)
-		defer timer.Stop()
 		if first {
 			if err := t.ExecuteWithTimeout(); err != nil {
 				return
 			}
 		}
 
+		timer := time.NewTimer(t.currentInterval())
+		defer timer.Stop()
 		for {
-			timer.Reset(t.Interval)
 			select {
 			case <-timer.C:
 				// continue
@@ -50,31 +51,58 @@ func (t *Task) Start(first bool) error {
 				log.Errorf("Task %s execution error: %v", t.Name, err)
 				return
 			}
+			timer.Reset(t.currentInterval())
 		}
 	}()
 
 	return nil
 }
 
+func (t *Task) currentInterval() time.Duration {
+	t.Access.RLock()
+	defer t.Access.RUnlock()
+	return t.Interval
+}
+
+func (t *Task) UpdateInterval(interval time.Duration) {
+	if interval <= 0 {
+		return
+	}
+	t.Access.Lock()
+	oldInterval := t.Interval
+	t.Interval = interval
+	t.Access.Unlock()
+	if oldInterval != interval {
+		log.Infof("Task %s interval updated from %s to %s", t.Name, oldInterval, interval)
+	}
+}
+
 func (t *Task) ExecuteWithTimeout() error {
-	ctx, cancel := context.WithTimeout(context.Background(), min(5*t.Interval, 5*time.Minute))
+	if !t.ExecuteLock.TryLock() {
+		log.Warningf("Task %s previous execution still running, skip this interval", t.Name)
+		return nil
+	}
+
+	interval := t.currentInterval()
+	ctx, cancel := context.WithTimeout(context.Background(), min(5*interval, 5*time.Minute))
 	defer cancel()
 	done := make(chan error, 1)
 
 	go func() {
+		defer t.ExecuteLock.Unlock()
 		done <- t.Execute(ctx)
 	}()
 
 	select {
 	case <-ctx.Done():
-		log.Errorf("Task %s execution timed out, reloading", t.Name)
-		if t.ReloadCh != nil {
+		if t.ReloadOnTimeout && t.ReloadCh != nil {
+			log.Errorf("Task %s execution timed out, reloading", t.Name)
 			select {
 			case t.ReloadCh <- struct{}{}:
 			default:
 			}
 		} else {
-			log.Panic("Reload failed")
+			log.Errorf("Task %s execution timed out, will retry on next interval", t.Name)
 		}
 		return nil
 	case err := <-done:
