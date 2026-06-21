@@ -2,7 +2,6 @@ package node
 
 import (
 	"context"
-	"errors"
 	"reflect"
 	"strings"
 	"time"
@@ -22,6 +21,7 @@ func (c *Controller) startTasks(node *panel.NodeInfo) {
 		Interval: node.PullInterval,
 		Execute:  c.nodeInfoMonitor,
 		ReloadCh: c.server.ReloadCh,
+		Timeout:  panelTaskTimeout,
 	}
 	// fetch user list task
 	c.userReportPeriodic = &task.Task{
@@ -29,6 +29,7 @@ func (c *Controller) startTasks(node *panel.NodeInfo) {
 		Interval: node.PushInterval,
 		Execute:  c.reportUserTrafficTask,
 		ReloadCh: c.server.ReloadCh,
+		Timeout:  panelTaskTimeout,
 	}
 	log.WithField("tag", c.tag).Info("Start monitor node status")
 	// delay to start nodeInfoMonitor
@@ -54,10 +55,16 @@ func (c *Controller) startTasks(node *panel.NodeInfo) {
 
 func (c *Controller) nodeInfoMonitor(ctx context.Context) (err error) {
 	// get node info
-	newN, err := c.apiClient.GetNodeInfo(ctx)
+	stepCtx, cancel := panelRequestContext(ctx)
+	newN, err := c.apiClient.GetNodeInfo(stepCtx)
+	cancel()
 	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return err
+		if isPanelTimeout(err) {
+			log.WithFields(log.Fields{
+				"tag": c.tag,
+				"err": err,
+			}).Warn("Get node info timed out, skip this interval")
+			return nil
 		}
 		log.WithFields(log.Fields{
 			"tag": c.tag,
@@ -80,10 +87,16 @@ func (c *Controller) nodeInfoMonitor(ctx context.Context) (err error) {
 	log.WithField("tag", c.tag).Debug("Node info no change")
 
 	// get user info
-	newU, err := c.apiClient.GetUserList(ctx)
+	stepCtx, cancel = panelRequestContext(ctx)
+	newU, err := c.apiClient.GetUserList(stepCtx)
+	cancel()
 	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return err
+		if isPanelTimeout(err) {
+			log.WithFields(log.Fields{
+				"tag": c.tag,
+				"err": err,
+			}).Warn("Get user list timed out, skip this interval")
+			return nil
 		}
 		log.WithFields(log.Fields{
 			"tag": c.tag,
@@ -92,16 +105,23 @@ func (c *Controller) nodeInfoMonitor(ctx context.Context) (err error) {
 		return nil
 	}
 	// get user alive
-	newA, err := c.apiClient.GetUserAlive(ctx)
+	stepCtx, cancel = panelRequestContext(ctx)
+	newA, err := c.apiClient.GetUserAlive(stepCtx)
+	cancel()
 	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return err
+		if isPanelTimeout(err) {
+			log.WithFields(log.Fields{
+				"tag": c.tag,
+				"err": err,
+			}).Warn("Get alive list timed out, continue without alive update")
+			newA = nil
+		} else {
+			log.WithFields(log.Fields{
+				"tag": c.tag,
+				"err": err,
+			}).Error("Get alive list failed")
+			return nil
 		}
-		log.WithFields(log.Fields{
-			"tag": c.tag,
-			"err": err,
-		}).Error("Get alive list failed")
-		return nil
 	}
 
 	// update alive list

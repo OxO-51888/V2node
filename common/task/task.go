@@ -18,6 +18,7 @@ type Task struct {
 	Running         bool
 	ReloadCh        chan struct{}
 	ReloadOnTimeout bool
+	Timeout         time.Duration
 	Stop            chan struct{}
 }
 
@@ -83,8 +84,7 @@ func (t *Task) ExecuteWithTimeout() error {
 		return nil
 	}
 
-	interval := t.currentInterval()
-	ctx, cancel := context.WithTimeout(context.Background(), min(5*interval, 5*time.Minute))
+	ctx, cancel := context.WithTimeout(context.Background(), t.currentTimeout())
 	defer cancel()
 	done := make(chan error, 1)
 
@@ -111,6 +111,17 @@ func (t *Task) ExecuteWithTimeout() error {
 		}
 		return err
 	}
+}
+
+func (t *Task) currentTimeout() time.Duration {
+	t.Access.RLock()
+	timeout := t.Timeout
+	interval := t.Interval
+	t.Access.RUnlock()
+	if timeout > 0 {
+		return timeout
+	}
+	return min(5*interval, 5*time.Minute)
 }
 
 func (t *Task) safeStop() {

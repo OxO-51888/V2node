@@ -2,7 +2,6 @@ package node
 
 import (
 	"context"
-	"errors"
 
 	log "github.com/sirupsen/logrus"
 	panel "github.com/wyx2685/v2node/api/v2board"
@@ -17,14 +16,16 @@ func (c *Controller) reportUserTrafficTask(ctx context.Context) (err error) {
 	}
 	userTraffic, _ := c.server.GetUserTrafficSlice(c.tag, reportmin)
 	if len(userTraffic) > 0 {
-		err = c.apiClient.ReportUserTraffic(ctx, userTraffic)
+		stepCtx, cancel := panelRequestContext(ctx)
+		err = c.apiClient.ReportUserTraffic(stepCtx, userTraffic)
+		cancel()
 		if err != nil {
 			log.WithFields(log.Fields{
 				"tag": c.tag,
 				"err": err,
 			}).Info("Report user traffic failed")
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				return err
+			if isPanelTimeout(err) {
+				return nil
 			}
 		} else {
 			log.WithField("tag", c.tag).Infof("Report %d users traffic", len(userTraffic))
@@ -57,14 +58,16 @@ func (c *Controller) reportUserTrafficTask(ctx context.Context) (err error) {
 			data[onlineuser.UID] = append(data[onlineuser.UID], onlineuser.IP)
 		}
 		if len(data) != 0 {
-			err := c.apiClient.ReportNodeOnlineUsers(ctx, &data)
+			stepCtx, cancel := panelRequestContext(ctx)
+			err := c.apiClient.ReportNodeOnlineUsers(stepCtx, &data)
+			cancel()
 			if err != nil {
 				log.WithFields(log.Fields{
 					"tag": c.tag,
 					"err": err,
 				}).Info("Report online users failed")
-				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-					return err
+				if isPanelTimeout(err) {
+					return nil
 				}
 			}
 		}
