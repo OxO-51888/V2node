@@ -39,7 +39,7 @@ func TestTimeoutDoesNotReloadByDefault(t *testing.T) {
 	}
 }
 
-func TestSkipWhilePreviousExecutionIsStillRunning(t *testing.T) {
+func TestTimeoutReleasesExecutionLock(t *testing.T) {
 	release := make(chan struct{})
 	var started int32
 	tk := &Task{
@@ -60,7 +60,7 @@ func TestSkipWhilePreviousExecutionIsStillRunning(t *testing.T) {
 	}
 	close(release)
 
-	if got := atomic.LoadInt32(&started); got != 1 {
-		t.Fatalf("started = %d, want 1", got)
+	if got := atomic.LoadInt32(&started); got != 2 {
+		t.Fatalf("started = %d, want 2", got)
 	}
 }

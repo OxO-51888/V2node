@@ -83,18 +83,25 @@ func (t *Task) ExecuteWithTimeout() error {
 		log.Warningf("Task %s previous execution still running, skip this interval", t.Name)
 		return nil
 	}
+	var unlockOnce sync.Once
+	unlock := func() {
+		unlockOnce.Do(func() {
+			t.ExecuteLock.Unlock()
+		})
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), t.currentTimeout())
 	defer cancel()
 	done := make(chan error, 1)
 
 	go func() {
-		defer t.ExecuteLock.Unlock()
+		defer unlock()
 		done <- t.Execute(ctx)
 	}()
 
 	select {
 	case <-ctx.Done():
+		unlock()
 		if t.ReloadOnTimeout && t.ReloadCh != nil {
 			log.Errorf("Task %s execution timed out, reloading", t.Name)
 			select {

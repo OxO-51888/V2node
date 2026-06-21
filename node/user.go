@@ -31,6 +31,21 @@ func (c *Controller) reportUserTrafficTask(ctx context.Context) (err error) {
 			log.WithField("tag", c.tag).Infof("Report %d users traffic", len(userTraffic))
 			//log.WithField("tag", c.tag).Debugf("User traffic: %+v", userTraffic)
 		}
+	} else {
+		stepCtx, cancel := panelRequestContext(ctx)
+		err = c.apiClient.ReportUserTraffic(stepCtx, userTraffic)
+		cancel()
+		if err != nil {
+			log.WithFields(log.Fields{
+				"tag": c.tag,
+				"err": err,
+			}).Debug("Report empty traffic heartbeat failed")
+			if isPanelTimeout(err) {
+				return nil
+			}
+		} else {
+			log.WithField("tag", c.tag).Debug("Report empty traffic heartbeat")
+		}
 	}
 
 	if onlineDevice, err := c.limiter.GetOnlineDevice(); err != nil {
