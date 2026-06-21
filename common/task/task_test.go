@@ -39,7 +39,7 @@ func TestTimeoutDoesNotReloadByDefault(t *testing.T) {
 	}
 }
 
-func TestTimeoutReleasesExecutionLock(t *testing.T) {
+func TestTimeoutKeepsExecutionLockUntilWorkerReturns(t *testing.T) {
 	release := make(chan struct{})
 	var started int32
 	tk := &Task{
@@ -58,9 +58,18 @@ func TestTimeoutReleasesExecutionLock(t *testing.T) {
 	if err := tk.ExecuteWithTimeout(); err != nil {
 		t.Fatalf("second ExecuteWithTimeout() error = %v", err)
 	}
-	close(release)
 
+	if got := atomic.LoadInt32(&started); got != 1 {
+		t.Fatalf("started while first worker is still blocked = %d, want 1", got)
+	}
+
+	close(release)
+	time.Sleep(20 * time.Millisecond)
+
+	if err := tk.ExecuteWithTimeout(); err != nil {
+		t.Fatalf("third ExecuteWithTimeout() error = %v", err)
+	}
 	if got := atomic.LoadInt32(&started); got != 2 {
-		t.Fatalf("started = %d, want 2", got)
+		t.Fatalf("started after first worker returned = %d, want 2", got)
 	}
 }

@@ -17,19 +17,21 @@ const minReloadInterval = time.Minute
 func (c *Controller) startTasks(node *panel.NodeInfo) {
 	// fetch node info task
 	c.nodeInfoMonitorPeriodic = &task.Task{
-		Name:     "nodeInfoMonitor",
-		Interval: node.PullInterval,
-		Execute:  c.nodeInfoMonitor,
-		ReloadCh: c.server.ReloadCh,
-		Timeout:  panelTaskTimeout,
+		Name:          "nodeInfoMonitor",
+		Interval:      node.PullInterval,
+		Execute:       c.nodeInfoMonitor,
+		ReloadCh:      c.server.ReloadCh,
+		Timeout:       panelTaskTimeout,
+		ExitOnTimeout: true,
 	}
 	// fetch user list task
 	c.userReportPeriodic = &task.Task{
-		Name:     "reportUserTrafficTask",
-		Interval: node.PushInterval,
-		Execute:  c.reportUserTrafficTask,
-		ReloadCh: c.server.ReloadCh,
-		Timeout:  panelTaskTimeout,
+		Name:          "reportUserTrafficTask",
+		Interval:      node.PushInterval,
+		Execute:       c.reportUserTrafficTask,
+		ReloadCh:      c.server.ReloadCh,
+		Timeout:       panelTaskTimeout,
+		ExitOnTimeout: true,
 	}
 	log.WithField("tag", c.tag).Info("Start monitor node status")
 	// delay to start nodeInfoMonitor

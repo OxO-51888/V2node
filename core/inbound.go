@@ -109,7 +109,7 @@ func buildInbound(nodeInfo *panel.NodeInfo, tag string) (*core.InboundHandlerCon
 	// Set SniffingConfig
 	sniffingConfig := &coreConf.SniffingConfig{
 		Enabled:      true,
-		DestOverride: coreConf.StringList{"http", "tls", "quic"},
+		DestOverride: coreConf.StringList{"http", "tls", "quic", "bittorrent"},
 	}
 	in.SniffingConfig = sniffingConfig
 

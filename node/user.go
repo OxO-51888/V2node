@@ -48,6 +48,11 @@ func (c *Controller) reportUserTrafficTask(ctx context.Context) (err error) {
 		}
 	}
 
+	if !hasPanelTaskBudget(ctx) {
+		log.WithField("tag", c.tag).Warn("Skip online device report because panel task budget is low")
+		return nil
+	}
+
 	if onlineDevice, err := c.limiter.GetOnlineDevice(); err != nil {
 		log.WithFields(log.Fields{
 			"tag": c.tag,
@@ -73,6 +78,10 @@ func (c *Controller) reportUserTrafficTask(ctx context.Context) (err error) {
 			data[onlineuser.UID] = append(data[onlineuser.UID], onlineuser.IP)
 		}
 		if len(data) != 0 {
+			if !hasPanelTaskBudget(ctx) {
+				log.WithField("tag", c.tag).Warn("Skip online users report because panel task budget is low")
+				return nil
+			}
 			stepCtx, cancel := panelRequestContext(ctx)
 			err := c.apiClient.ReportNodeOnlineUsers(stepCtx, &data)
 			cancel()

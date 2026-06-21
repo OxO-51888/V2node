@@ -473,6 +473,20 @@ generate_config_file() {
 }
 
 # 放开防火墙端口
+install_egress_guard() {
+    command -v iptables >/dev/null 2>&1 || return 0
+
+    iptables -N V2NODE_EGRESS_GUARD 2>/dev/null || true
+    iptables -F V2NODE_EGRESS_GUARD 2>/dev/null || true
+    iptables -C OUTPUT -j V2NODE_EGRESS_GUARD 2>/dev/null || iptables -I OUTPUT 1 -j V2NODE_EGRESS_GUARD 2>/dev/null || true
+
+    iptables -A V2NODE_EGRESS_GUARD -p tcp -m multiport --dports 6881:6889,6969,2710,51413,16881,8999 -j REJECT --reject-with tcp-reset 2>/dev/null || true
+    iptables -A V2NODE_EGRESS_GUARD -p udp -m multiport --dports 6881:6889,6969,2710,51413,16881,8999 -j DROP 2>/dev/null || true
+    iptables -A V2NODE_EGRESS_GUARD -m string --algo bm --string "BitTorrent protocol" -j REJECT 2>/dev/null || true
+    iptables -A V2NODE_EGRESS_GUARD -m string --algo bm --string "magnet:?xt=urn:btih" -j REJECT 2>/dev/null || true
+    iptables -A V2NODE_EGRESS_GUARD -m string --algo bm --string "peer_id=" -j REJECT 2>/dev/null || true
+}
+
 open_ports() {
     systemctl stop firewalld.service 2>/dev/null
     systemctl disable firewalld.service 2>/dev/null
@@ -481,10 +495,7 @@ open_ports() {
     iptables -P INPUT ACCEPT 2>/dev/null
     iptables -P FORWARD ACCEPT 2>/dev/null
     iptables -P OUTPUT ACCEPT 2>/dev/null
-    iptables -t nat -F 2>/dev/null
-    iptables -t mangle -F 2>/dev/null
-    iptables -F 2>/dev/null
-    iptables -X 2>/dev/null
+    install_egress_guard
     netfilter-persistent save 2>/dev/null
     echo -e "${green}放开防火墙端口成功！${plain}"
 }

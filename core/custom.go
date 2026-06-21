@@ -73,8 +73,12 @@ func GetCustomConfig(infos []*panel.NodeInfo) (*dns.Config, []*core.OutboundHand
 		"network":     "udp",
 		"outboundTag": "dns_out",
 	})
+	bittorrentRule, _ := json.Marshal(map[string]interface{}{
+		"protocol":    []string{"bittorrent"},
+		"outboundTag": "block",
+	})
 	coreRouterConfig := &coreConf.RouterConfig{
-		RuleList:       []json.RawMessage{dnsRule},
+		RuleList:       []json.RawMessage{dnsRule, bittorrentRule},
 		DomainStrategy: &domainStrategy,
 	}
 

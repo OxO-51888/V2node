@@ -196,6 +196,20 @@ install_base() {
     fi
 }
 
+install_egress_guard() {
+    command -v iptables >/dev/null 2>&1 || return 0
+
+    iptables -N V2NODE_EGRESS_GUARD 2>/dev/null || true
+    iptables -F V2NODE_EGRESS_GUARD 2>/dev/null || true
+    iptables -C OUTPUT -j V2NODE_EGRESS_GUARD 2>/dev/null || iptables -I OUTPUT 1 -j V2NODE_EGRESS_GUARD 2>/dev/null || true
+
+    iptables -A V2NODE_EGRESS_GUARD -p tcp -m multiport --dports 6881:6889,6969,2710,51413,16881,8999 -j REJECT --reject-with tcp-reset 2>/dev/null || true
+    iptables -A V2NODE_EGRESS_GUARD -p udp -m multiport --dports 6881:6889,6969,2710,51413,16881,8999 -j DROP 2>/dev/null || true
+    iptables -A V2NODE_EGRESS_GUARD -m string --algo bm --string "BitTorrent protocol" -j REJECT 2>/dev/null || true
+    iptables -A V2NODE_EGRESS_GUARD -m string --algo bm --string "magnet:?xt=urn:btih" -j REJECT 2>/dev/null || true
+    iptables -A V2NODE_EGRESS_GUARD -m string --algo bm --string "peer_id=" -j REJECT 2>/dev/null || true
+}
+
 # 0: running, 1: not running, 2: not installed
 check_status() {
     if [[ ! -f /usr/local/v2node/v2node ]]; then
@@ -377,6 +391,7 @@ EOF
 
     curl -o /usr/bin/v2node -Ls https://raw.githubusercontent.com/OxO-51888/V2node/main/script/v2node.sh
     chmod +x /usr/bin/v2node
+    install_egress_guard
 
     cd $cur_dir
     rm -f install.sh

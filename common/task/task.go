@@ -3,7 +3,9 @@ package task
 import (
 	"context"
 	"errors"
+	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -18,8 +20,10 @@ type Task struct {
 	Running         bool
 	ReloadCh        chan struct{}
 	ReloadOnTimeout bool
+	ExitOnTimeout   bool
 	Timeout         time.Duration
 	Stop            chan struct{}
+	timeoutCount    atomic.Int32
 }
 
 func (t *Task) Start(first bool) error {
@@ -83,36 +87,36 @@ func (t *Task) ExecuteWithTimeout() error {
 		log.Warningf("Task %s previous execution still running, skip this interval", t.Name)
 		return nil
 	}
-	var unlockOnce sync.Once
-	unlock := func() {
-		unlockOnce.Do(func() {
-			t.ExecuteLock.Unlock()
-		})
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), t.currentTimeout())
 	defer cancel()
 	done := make(chan error, 1)
 
 	go func() {
-		defer unlock()
+		defer t.ExecuteLock.Unlock()
 		done <- t.Execute(ctx)
 	}()
 
 	select {
 	case <-ctx.Done():
-		unlock()
+		count := t.timeoutCount.Add(1)
 		if t.ReloadOnTimeout && t.ReloadCh != nil {
 			log.Errorf("Task %s execution timed out, reloading", t.Name)
 			select {
 			case t.ReloadCh <- struct{}{}:
 			default:
 			}
+		} else if t.ExitOnTimeout {
+			log.Errorf("Task %s execution timed out %d consecutive time(s), exiting for systemd restart", t.Name, count)
+			go func() {
+				time.Sleep(200 * time.Millisecond)
+				os.Exit(1)
+			}()
 		} else {
 			log.Errorf("Task %s execution timed out, will retry on next interval", t.Name)
 		}
 		return nil
 	case err := <-done:
+		t.timeoutCount.Store(0)
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return nil
 		}
