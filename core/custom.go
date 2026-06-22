@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	panel "github.com/wyx2685/v2node/api/v2board"
+	"github.com/wyx2685/v2node/conf"
 	"github.com/xtls/xray-core/app/dns"
 	"github.com/xtls/xray-core/app/router"
 	xnet "github.com/xtls/xray-core/common/net"
@@ -42,7 +43,7 @@ func hasOutboundWithTag(list []*core.OutboundHandlerConfig, tag string) bool {
 	return false
 }
 
-func GetCustomConfig(infos []*panel.NodeInfo) (*dns.Config, []*core.OutboundHandlerConfig, *router.Config, error) {
+func GetCustomConfig(infos []*panel.NodeInfo, unlock conf.UnlockConfig) (*dns.Config, []*core.OutboundHandlerConfig, *router.Config, error) {
 	//dns
 	queryStrategy := "UseIPv4v6"
 	if !hasPublicIPv6() {
@@ -232,6 +233,7 @@ func GetCustomConfig(infos []*panel.NodeInfo) (*dns.Config, []*core.OutboundHand
 			}
 		}
 	}
+	appendUnlockRoutes(&coreOutboundConfig, coreRouterConfig, unlock)
 	DnsConfig, err := coreDnsConfig.Build()
 	if err != nil {
 		return nil, nil, nil, err
@@ -241,4 +243,159 @@ func GetCustomConfig(infos []*panel.NodeInfo) (*dns.Config, []*core.OutboundHand
 		return nil, nil, nil, err
 	}
 	return DnsConfig, coreOutboundConfig, RouterConfig, nil
+}
+
+func appendUnlockRoutes(outbounds *[]*core.OutboundHandlerConfig, router *coreConf.RouterConfig, unlock conf.UnlockConfig) {
+	if !unlock.Enable {
+		return
+	}
+
+	known := make(map[string]bool)
+	for _, outbound := range *outbounds {
+		if outbound != nil && outbound.Tag != "" {
+			known[outbound.Tag] = true
+		}
+	}
+
+	for _, socks := range unlock.SOCKS {
+		if socks.Tag == "" || socks.Address == "" || socks.Port <= 0 || known[socks.Tag] {
+			continue
+		}
+		outbound := buildUnlockSocksOutbound(socks)
+		if outbound == nil {
+			continue
+		}
+		*outbounds = append(*outbounds, outbound)
+		known[socks.Tag] = true
+	}
+
+	for _, rule := range unlock.Rules {
+		if rule.Outbound == "" || len(rule.Match) == 0 || !known[rule.Outbound] {
+			continue
+		}
+		rawRule, err := json.Marshal(buildUnlockRulePayload(rule))
+		if err != nil {
+			continue
+		}
+		router.RuleList = append(router.RuleList, rawRule)
+	}
+
+	defaultOutbound := selectDefaultUnlockOutbound(unlock, known)
+	if defaultOutbound != "" && !hasTwitterUnlockRule(unlock.Rules) {
+		rawRule, err := json.Marshal(buildUnlockRulePayload(conf.UnlockRule{
+			Outbound:  defaultOutbound,
+			Match:     twitterUnlockDomains,
+			ProtoPort: "tcp/443",
+		}))
+		if err == nil {
+			router.RuleList = append(router.RuleList, rawRule)
+		}
+	}
+}
+
+var twitterUnlockDomains = []string{
+	"domain:x.com",
+	"domain:twitter.com",
+	"domain:t.co",
+	"domain:twimg.com",
+	"domain:api.x.com",
+	"domain:api.twitter.com",
+	"domain:abs.twimg.com",
+	"domain:pbs.twimg.com",
+	"domain:video.twimg.com",
+}
+
+func selectDefaultUnlockOutbound(unlock conf.UnlockConfig, known map[string]bool) string {
+	if tag := strings.TrimSpace(unlock.DefaultOutbound); tag != "" && known[tag] {
+		return tag
+	}
+	for _, socks := range unlock.SOCKS {
+		if socks.Tag != "" && known[socks.Tag] {
+			return socks.Tag
+		}
+	}
+	return ""
+}
+
+func hasTwitterUnlockRule(rules []conf.UnlockRule) bool {
+	for _, rule := range rules {
+		for _, match := range rule.Match {
+			domain := unlockRuleDomain(match)
+			if domain == "x.com" ||
+				domain == "t.co" ||
+				domain == "twitter.com" ||
+				strings.HasSuffix(domain, ".twitter.com") ||
+				domain == "twimg.com" ||
+				strings.HasSuffix(domain, ".twimg.com") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func unlockRuleDomain(match string) string {
+	domain := strings.ToLower(strings.TrimSpace(match))
+	if index := strings.Index(domain, ":"); index >= 0 {
+		domain = domain[index+1:]
+	}
+	return strings.Trim(domain, ".")
+}
+
+func buildUnlockRulePayload(rule conf.UnlockRule) map[string]interface{} {
+	payload := map[string]interface{}{
+		"domain":      rule.Match,
+		"outboundTag": rule.Outbound,
+	}
+	protoPort := strings.TrimSpace(rule.ProtoPort)
+	if protoPort == "" {
+		return payload
+	}
+	parts := strings.SplitN(protoPort, "/", 2)
+	if len(parts) == 2 {
+		if network := strings.TrimSpace(parts[0]); network != "" {
+			payload["network"] = network
+		}
+		if port := strings.TrimSpace(parts[1]); port != "" {
+			payload["port"] = port
+		}
+		return payload
+	}
+	if protoPort == "tcp" || protoPort == "udp" || protoPort == "tcp,udp" {
+		payload["network"] = protoPort
+		return payload
+	}
+	payload["port"] = protoPort
+	return payload
+}
+
+func buildUnlockSocksOutbound(socks conf.UnlockSOCKS) *core.OutboundHandlerConfig {
+	server := map[string]interface{}{
+		"address": socks.Address,
+		"port":    socks.Port,
+	}
+	if socks.Username != "" && socks.Password != "" {
+		server["users"] = []map[string]string{{
+			"user": socks.Username,
+			"pass": socks.Password,
+		}}
+	}
+
+	outboundDetourConfig := &coreConf.OutboundDetourConfig{
+		Protocol: "socks",
+		Tag:      socks.Tag,
+	}
+	setting, err := json.Marshal(map[string]interface{}{
+		"servers": []map[string]interface{}{server},
+	})
+	if err != nil {
+		return nil
+	}
+	raw := json.RawMessage(setting)
+	outboundDetourConfig.Settings = &raw
+	built, err := outboundDetourConfig.Build()
+	if err != nil {
+		return nil
+	}
+	return built
 }

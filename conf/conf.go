@@ -14,6 +14,7 @@ type Conf struct {
 	LogConfig   LogConfig    `mapstructure:"Log"`
 	NodeConfigs []NodeConfig `mapstructure:"Nodes"`
 	PprofPort   int          `mapstructure:"PprofPort"`
+	Unlock      UnlockConfig `mapstructure:"Unlock"`
 }
 
 type LogConfig struct {
@@ -28,6 +29,27 @@ type NodeConfig struct {
 	Key        string `mapstructure:"ApiKey"`
 	Timeout    int    `mapstructure:"Timeout"`
 	RetryCount *int   `mapstructure:"RetryCount"`
+}
+
+type UnlockConfig struct {
+	Enable          bool          `mapstructure:"Enable"`
+	DefaultOutbound string        `mapstructure:"DefaultOutbound"`
+	SOCKS           []UnlockSOCKS `mapstructure:"SOCKS"`
+	Rules           []UnlockRule  `mapstructure:"Rules"`
+}
+
+type UnlockSOCKS struct {
+	Tag      string `mapstructure:"Tag"`
+	Address  string `mapstructure:"Address"`
+	Port     int    `mapstructure:"Port"`
+	Username string `mapstructure:"Username"`
+	Password string `mapstructure:"Password"`
+}
+
+type UnlockRule struct {
+	Outbound  string   `mapstructure:"Outbound"`
+	Match     []string `mapstructure:"Match"`
+	ProtoPort string   `mapstructure:"ProtoPort"`
 }
 
 func New() *Conf {
