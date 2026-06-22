@@ -482,9 +482,14 @@ install_egress_guard() {
 
     iptables -A V2NODE_EGRESS_GUARD -p tcp -m multiport --dports 6881:6889,6969,2710,51413,16881,8999 -j REJECT --reject-with tcp-reset 2>/dev/null || true
     iptables -A V2NODE_EGRESS_GUARD -p udp -m multiport --dports 6881:6889,6969,2710,51413,16881,8999 -j DROP 2>/dev/null || true
+    iptables -A V2NODE_EGRESS_GUARD -p tcp -m multiport --dports 3333,3334,3335,4444,5555,7777,9999,14433,14444,18081,18082 -j REJECT --reject-with tcp-reset 2>/dev/null || true
     iptables -A V2NODE_EGRESS_GUARD -m string --algo bm --string "BitTorrent protocol" -j REJECT 2>/dev/null || true
     iptables -A V2NODE_EGRESS_GUARD -m string --algo bm --string "magnet:?xt=urn:btih" -j REJECT 2>/dev/null || true
     iptables -A V2NODE_EGRESS_GUARD -m string --algo bm --string "peer_id=" -j REJECT 2>/dev/null || true
+    iptables -A V2NODE_EGRESS_GUARD -m string --algo bm --string "stratum+tcp" -j REJECT 2>/dev/null || true
+    iptables -A V2NODE_EGRESS_GUARD -m string --algo bm --string "mining.subscribe" -j REJECT 2>/dev/null || true
+    iptables -A V2NODE_EGRESS_GUARD -m string --algo bm --string "eth_submitLogin" -j REJECT 2>/dev/null || true
+    iptables -A V2NODE_EGRESS_GUARD -m string --algo bm --string "eth_submitWork" -j REJECT 2>/dev/null || true
 }
 
 open_ports() {

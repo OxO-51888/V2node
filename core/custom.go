@@ -43,6 +43,144 @@ func hasOutboundWithTag(list []*core.OutboundHandlerConfig, tag string) bool {
 	return false
 }
 
+var builtInBlockedDomains = []string{
+	// BT and torrent indexers.
+	"domain:thepiratebay.org",
+	"domain:piratebay.org",
+	"domain:1337x.to",
+	"domain:rarbg.to",
+	"domain:rarbggo.to",
+	"domain:yts.mx",
+	"domain:nyaa.si",
+	"domain:sukebei.nyaa.si",
+	"domain:rutracker.org",
+	"domain:torrentgalaxy.to",
+	"domain:torrentleech.org",
+	"domain:limetorrents.lol",
+	"domain:magnetdl.com",
+	"domain:bt4g.org",
+	"domain:bt4gprx.com",
+	"domain:zooqle.com",
+	"domain:eztv.re",
+	"domain:tokyotosho.info",
+	"domain:dmhy.org",
+	"domain:acg.rip",
+	"domain:mikanani.me",
+
+	// Mining pools, miner projects, and browser-mining services.
+	"domain:nicehash.com",
+	"domain:miningpoolhub.com",
+	"domain:braiins.com",
+	"domain:slushpool.com",
+	"domain:f2pool.com",
+	"domain:antpool.com",
+	"domain:poolin.com",
+	"domain:viabtc.com",
+	"domain:btc.com",
+	"domain:nanopool.org",
+	"domain:ethermine.org",
+	"domain:2miners.com",
+	"domain:sparkpool.com",
+	"domain:flexpool.io",
+	"domain:flypool.org",
+	"domain:herominers.com",
+	"domain:moneroocean.stream",
+	"domain:supportxmr.com",
+	"domain:minexmr.com",
+	"domain:xmrig.com",
+	"domain:minergate.com",
+	"domain:hashvault.pro",
+	"domain:unmineable.com",
+	"domain:kryptex.com",
+	"domain:woolypooly.com",
+	"domain:poolflare.com",
+	"domain:ezil.me",
+	"domain:coinhive.com",
+	"domain:cryptoloot.pro",
+	"domain:webminepool.com",
+
+	// Sensitive political and Falun Gong-related sites.
+	"domain:falundafa.org",
+	"domain:faluninfo.net",
+	"domain:minghui.org",
+	"domain:zhengjian.org",
+	"domain:epochtimes.com",
+	"domain:theepochtimes.com",
+	"domain:dajiyuan.com",
+	"domain:ntdtv.com",
+	"domain:soundofhope.org",
+	"domain:renminbao.com",
+	"domain:secretchina.com",
+	"domain:kanzhongguo.com",
+	"domain:aboluowang.com",
+	"domain:shenyun.com",
+	"domain:ganjingworld.com",
+	"domain:rfa.org",
+	"domain:voachinese.com",
+	"domain:dw.com",
+	"domain:bbc.com",
+	"domain:bbc.co.uk",
+	"domain:chinadigitaltimes.net",
+	"domain:boxun.com",
+	"domain:pincong.rocks",
+	"domain:8964museum.com",
+	"domain:tiananmenmother.org",
+	"domain:hrichina.org",
+	"domain:amnesty.org",
+	"domain:hrw.org",
+	"domain:freedomhouse.org",
+	"domain:uscirf.gov",
+	"domain:uyghurcongress.org",
+	"domain:tibet.net",
+	"domain:savetibet.org",
+}
+
+var builtInBlockedPorts = []string{
+	"6881-6889",
+	"6969",
+	"2710",
+	"51413",
+	"16881",
+	"8999",
+	"3333",
+	"3334",
+	"3335",
+	"4444",
+	"5555",
+	"7777",
+	"9999",
+	"14433",
+	"14444",
+	"18081",
+	"18082",
+}
+
+func appendBuiltInBlockRules(ruleList []json.RawMessage) []json.RawMessage {
+	rules := []map[string]interface{}{
+		{
+			"protocol":    []string{"bittorrent"},
+			"outboundTag": "block",
+		},
+		{
+			"domain":      builtInBlockedDomains,
+			"outboundTag": "block",
+		},
+		{
+			"port":        strings.Join(builtInBlockedPorts, ","),
+			"outboundTag": "block",
+		},
+	}
+
+	for _, rule := range rules {
+		rawRule, err := json.Marshal(rule)
+		if err != nil {
+			continue
+		}
+		ruleList = append(ruleList, rawRule)
+	}
+	return ruleList
+}
+
 func GetCustomConfig(infos []*panel.NodeInfo, unlock conf.UnlockConfig) (*dns.Config, []*core.OutboundHandlerConfig, *router.Config, error) {
 	//dns
 	queryStrategy := "UseIPv4v6"
@@ -74,12 +212,8 @@ func GetCustomConfig(infos []*panel.NodeInfo, unlock conf.UnlockConfig) (*dns.Co
 		"network":     "udp",
 		"outboundTag": "dns_out",
 	})
-	bittorrentRule, _ := json.Marshal(map[string]interface{}{
-		"protocol":    []string{"bittorrent"},
-		"outboundTag": "block",
-	})
 	coreRouterConfig := &coreConf.RouterConfig{
-		RuleList:       []json.RawMessage{dnsRule, bittorrentRule},
+		RuleList:       appendBuiltInBlockRules([]json.RawMessage{dnsRule}),
 		DomainStrategy: &domainStrategy,
 	}
 

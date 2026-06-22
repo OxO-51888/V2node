@@ -8,7 +8,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
-func TestCustomConfigBlocksBittorrentByDefault(t *testing.T) {
+func TestCustomConfigBlocksRiskTrafficByDefault(t *testing.T) {
 	_, _, routerConfig, err := GetCustomConfig(nil, conf.UnlockConfig{})
 	if err != nil {
 		t.Fatalf("GetCustomConfig() error = %v", err)
@@ -21,6 +21,18 @@ func TestCustomConfigBlocksBittorrentByDefault(t *testing.T) {
 	text := string(raw)
 	if !strings.Contains(text, "bittorrent") {
 		t.Fatalf("router config does not contain bittorrent block rule: %s", text)
+	}
+	for _, want := range []string{
+		"thepiratebay.org",
+		"nicehash.com",
+		"falundafa.org",
+		"minghui.org",
+		"51413",
+		"3333",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("router config does not contain builtin block item %q: %s", want, text)
+		}
 	}
 	if !strings.Contains(text, "block") {
 		t.Fatalf("router config does not contain block outbound rule: %s", text)
